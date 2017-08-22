@@ -10,7 +10,7 @@ Route::group(['prefix' => 'api/v1'], function (){
         'only' => ['store', 'destroy']
     ]);
 
-    Route::post('user',[
+    Route::post('meeting/user',[
         'uses' => 'AuthController@store'
     ]);
 
