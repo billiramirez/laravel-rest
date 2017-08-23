@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Meeting;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use App\Http\Requests;
@@ -25,24 +27,18 @@ class MeetingController extends Controller
 
 
 
-        $meeting = [
-            'title' => 'Title',
-            'description' => 'Description' ,
-            'time' => 'Time',
-            'user_id' => 'User Id' ,
-            'view_meeting' => [
-                'href' => 'api/v1/meeting/1',
+        $meetings = Meeting::all();
+        foreach ($meetings as $meeting){
+            $meeting->view_meeting = [
+                'href' => 'api/v1/meeting/' . $meeting->id,
                 'method' => 'GET'
-            ]
-        ];
-
+            ];
+        }
         $response = [
             'msg' => 'List of all Meetings',
-            'meeting' => [
-                $meeting,
-                $meeting
-            ]
-        ];
+            'meeting' => $meeting
+            ];
+
 
         return $response()->json($response, 200);
     }
@@ -70,23 +66,34 @@ class MeetingController extends Controller
         $time = $request->input('time');
         $user_id = $request->input('user_id');
 
-        $meeting = [
+        $meeting = new Meeting([
+            'time' => Carbon::createFromFormat('YmdHie', $time),
             'title' => $title,
-            'description' => $description,
-            'time' => $time,
-            'user_id' => $user_id,
-            'view_meeting' => [
+            'description' => $description
+        ]);
+
+        if ($meeting->save())
+        {
+            $meeting->users()->attach($user_id);
+            $meeting->view_meeting = [
                 'href' => 'api/v1/meeting/1',
                 'method' => 'GET'
-            ]
-        ];
+            ];
+
+            $message = [
+                'msg' =>'Meeting Created',
+                'meeting' => $meeting
+            ];
+
+            return response()->json($message, 201);
+        }
 
         $response = [
-            'msg' => 'Meeting Created',
+            'msg' => 'Error occurred',
             'meeting' => $meeting
         ];
 
-        return response()->json($response, 201);
+        return response()->json($response, 404);
     }
 
     /**
@@ -97,19 +104,14 @@ class MeetingController extends Controller
      */
     public function show($id)
     {
-        $meeting = [
-            'title' => 'Title',
-            'description' => 'Description',
-            'time' => 'Time',
-            'user_id' => 'User Id',
-            'view_meetings' => [
-                'href' => 'api/v1/meeting',
-                'method' => 'GET'
-            ]
+        $meeting = Meeting::with('users')->where('id', $id)->firstOrFail();
+        $meeting->view_meeting = [
+            'href' => 'api/v1/meeting',
+            'method' => 'GET'
         ];
 
         $response = [
-          'msg' => 'Meeting Information',
+            'msg' => 'Meeting Information',
             'meeting' => $meeting
         ];
 
@@ -140,16 +142,25 @@ class MeetingController extends Controller
         $time = $request->input('time');
         $user_id = $request->input('user_id');
 
-        $meeting = [
-            'title' => $title,
-            'description' => $description,
-            'time' => $time,
-            'user_id' => $user_id,
-            'view_meeting' => [
-                'href' => 'api/v1/meeting/1',
-                'method' => 'GET'
-            ]
 
+        $meeting = Meeting::with('users')->findOrFail($id);
+
+        if (!$meeting->users()->where('users.id', $user_id)->first())
+        {
+            return response()->json(['msg' => 'User not registered for meeting, update no successful'], 401);
+        }
+        $meeting->time =  Carbon::createFromFormat('YmdHie', $time);
+        $meeting->title = $title;
+        $meeting->description = $description;
+
+        if (!$meeting->update())
+        {
+            return response()->json(['msg'=> 'Error during updating'], 404);
+        }
+
+        $meeting->view_meeting = [
+          'href' => 'api/v1/meeting' . $meeting->id,
+            'method' => 'GET'
         ];
 
         $response = [
@@ -168,6 +179,18 @@ class MeetingController extends Controller
      */
     public function destroy($id)
     {
+        $meeting = Meeting::findOrFail($id);
+        $users = $meeting->users;
+        $meeting->users->detach();
+        if (!$meeting->delete())
+        {
+            foreach ($users as $user) {
+                $meeting->users()->attach($user);
+            }
+
+            return response()->json(['msg' => 'Deletion Failed'], 404);
+        }
+
         $response = [
             'msg' => 'Meeting Deleted',
             'create' =>[
