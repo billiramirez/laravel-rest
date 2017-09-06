@@ -19,3 +19,7 @@ Route::group(['prefix' => 'api/v1'], function (){
     ]);
 
 });
+
+Route::controllers([
+	'auth' => '\App\Http\Controllers\AuthController',
+]);
